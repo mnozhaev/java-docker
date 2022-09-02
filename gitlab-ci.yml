@@ -1,0 +1,45 @@
+image: docker:latest
+services:
+  - docker:dind
+
+variables:
+  DOCKER_DRIVER: overlay
+  SPRING_PROFILES_ACTIVE: gitlab-ci
+
+stages:
+  - build
+  - package
+  - deploy
+
+maven-build:
+  image: maven:3-jdk-11
+  stage: build
+  script: "mvn package -B"
+  artifacts:
+    paths:
+      - target/*.jar
+
+docker-build:
+  stage: package
+  script:
+  - docker build --compress --no-cache -t  ${CI_REGISTRY_URL}/${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME} -f Dockerfile .
+  - docker login -u gitlab-ci-token -p $CI_BUILD_TOKEN registry.site.ru
+  - docker push  ${CI_REGISTRY_URL}/${CI_PROJECT_NAME}_${CI_COMMIT_REF_NAME}
+
+k8s-deploy:
+  image: docker:18-git
+  stage: deploy
+  when: always
+  before_script:
+    - echo ${DEPLOY_KUBER_CONFIG} | base64 -d > /tmp/kubeconfig
+  script:
+    - export KUBECONFIG=/tmp/kubeconfig
+    - docker pull ${CI_REGISTRY_URL}/${CI_PROJECT_NAME}
+    - docker tag ${CI_REGISTRY_URL}/${CI_PROJECT_NAME} $img
+    - docker push $img
+    - wget https://storage.googleapis.com/kubernetes-release/release/v1.19.0/bin/linux/amd64/kubectl
+    - chmod +x ./kubectl && mv ./kubectl /usr/local/bin/kubectl
+    - sed -i "s#img#$MY_IMAGE#g" /devops/k8s/deployment.yml
+    - kubectl create namespace my-app
+    - kubectl delete job --all -n my-app --ignore-not-found   
+    - kubectl apply -f deployment.yml -n my-app

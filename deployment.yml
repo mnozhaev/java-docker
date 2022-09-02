@@ -1,0 +1,54 @@
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: my-app
+  name: my-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-app
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+      - name: my-app
+        image: $MY_IMAGE
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8123
+          name: service-http
+          protocol: TCP
+        resources:
+          limits:
+            cpu: "1"
+            memory: 4Gi
+          requests:
+            cpu: 100m
+            memory: 128M   
+
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: my-app
+  name: my-app
+spec:
+  ports:
+  - name: service-http
+    port: 8180
+    protocol: TCP
+    targetPort: service-http
+  selector:
+    app: my-app
+  sessionAffinity: None
+  type: ClusterIP
